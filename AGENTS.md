@@ -1,0 +1,8 @@
+- App: Electron + React + TypeScript + Vite + Shadcn.
+- Install: `npm ci`
+- Dev: `npm run dev`
+- Test: `npm test`
+- Check: `npm run typecheck && npm run lint:check`
+- Build: `npm run vite:build:app`; package Windows: `npm run build:win`
+- Keep changes focused; follow existing patterns. Run relevant checks before finishing.
+- Add/update libs at the latest stable version: `npm install <package>@latest` (dev: `npm install -D <package>@latest`). Commit the updated lockfile; verify compatibility.
