@@ -2,14 +2,21 @@
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { it, expect, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ clone: vi.fn(), picker: vi.fn(), refetch: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  clone: vi.fn(),
+  picker: vi.fn(),
+  refetch: vi.fn(),
+  delete: vi.fn(),
+  projects: [] as { id: string; name: string; path: string }[],
+}))
 vi.mock('@/conveyor/client', () => ({
   conveyor: {
     projects: {
-      list: { useQuery: () => ({ data: [], refetch: mocks.refetch }) },
+      list: { useQuery: () => ({ data: mocks.projects, refetch: mocks.refetch }) },
       executions: { useQuery: () => ({ data: [], refetch: mocks.refetch }) },
       pickDestination: mocks.picker,
       clone: mocks.clone,
+      delete: mocks.delete,
     },
   },
 }))
@@ -35,9 +42,36 @@ it('defaults to no commands and forwards the checkbox through the typed clone ca
     await act(async () => checkbox.click())
     await act(async () => scaffold.click())
     expect(mocks.clone).toHaveBeenLastCalledWith({ name: 'my-electron-app', runDev: true })
-    expect(container.querySelectorAll('th')).toHaveLength(4)
+    expect(container.querySelectorAll('th')).toHaveLength(8)
   } finally {
     await act(async () => root.unmount())
     container.remove()
+  }
+})
+
+it('shows delete progress in its row and finishes without waiting for size refresh', async () => {
+  mocks.projects = [{ id: 'project-id', name: 'delete-me', path: 'C:\\Projects\\delete-me' }]
+  let finish!: () => void
+  mocks.delete.mockReturnValue(
+    new Promise<void>((resolve) => {
+      finish = resolve
+    })
+  )
+  mocks.refetch.mockReturnValue(new Promise(() => {}))
+  const container = document.createElement('div')
+  const root = createRoot(container)
+  try {
+    await act(async () => root.render(<ProjectScaffolder />))
+    await act(async () => (container.querySelector('[aria-label="Delete delete-me"]') as HTMLButtonElement).click())
+    expect(container.textContent).toContain('Moving to trash…')
+    expect(container.querySelector('button[type="submit"] .animate-spin')).toBeNull()
+    expect(container.querySelector('[aria-label="Delete delete-me"] .animate-spin')).not.toBeNull()
+    await act(async () => finish())
+    expect(container.querySelector('[aria-label="Delete delete-me"]')).toBeNull()
+    expect(container.textContent).toContain('Moved delete-me to trash.')
+  } finally {
+    await act(async () => root.unmount())
+    mocks.projects = []
+    mocks.refetch.mockReset()
   }
 })

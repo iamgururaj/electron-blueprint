@@ -1,9 +1,10 @@
 import { useState } from 'react'
-import { FolderGit2, FolderOpen, LoaderCircle, Play, RefreshCw, Terminal, X } from 'lucide-react'
+import { FolderGit2, FolderOpen, LoaderCircle, Play, RefreshCw, Terminal, Trash2, X } from 'lucide-react'
 import { conveyor } from '@/conveyor/client'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '../ui/table'
 
 export function ProjectScaffolder() {
   const projects = conveyor.projects.list.useQuery()
@@ -12,12 +13,15 @@ export function ProjectScaffolder() {
   const [destination, setDestination] = useState<string | null>(null)
   const [runDev, setRunDev] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [operation, setOperation] = useState('')
+  const [deletedIds, setDeletedIds] = useState<string[]>([])
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const validName = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/.test(name)
 
-  async function perform(action: () => Promise<void>) {
+  async function perform(action: () => Promise<void>, operation = '') {
     setBusy(true)
+    setOperation(operation)
     setError('')
     setMessage('')
     try {
@@ -26,11 +30,12 @@ export function ProjectScaffolder() {
       setError(error instanceof Error ? error.message : 'Operation failed. Try again.')
     } finally {
       setBusy(false)
+      setOperation('')
     }
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-4 p-5">
+    <div className="w-full min-w-0 space-y-4 p-5">
       <h1 className="text-lg font-semibold tracking-tight">Project Scaffolder</h1>
       <form
         className="space-y-3"
@@ -43,7 +48,7 @@ export function ProjectScaffolder() {
             await projects.refetch()
             await executions.refetch()
             setMessage(result.warning ? `Scaffolded. ${result.warning}` : `Scaffolded ${result.project.name}.`)
-          })
+          }, 'scaffold')
         }}
       >
         <div className="grid gap-3 sm:grid-cols-3">
@@ -105,7 +110,8 @@ export function ProjectScaffolder() {
             Run npm i &amp; dev
           </label>
           <Button type="submit" disabled={busy || !destination || !validName}>
-            {busy ? <LoaderCircle className="animate-spin" /> : <FolderGit2 />}Scaffold
+            <FolderGit2 />
+            Scaffold
           </Button>
         </div>
       </form>
@@ -128,7 +134,7 @@ export function ProjectScaffolder() {
             disabled={busy || projects.isFetching}
             onClick={() => void projects.refetch()}
           >
-            <RefreshCw />
+            <RefreshCw className={projects.isFetching ? 'animate-spin' : undefined} />
             Refresh
           </Button>
         </div>
@@ -137,85 +143,137 @@ export function ProjectScaffolder() {
             Could not load projects or execution status. Retry Refresh.
           </p>
         )}
-        <div className="overflow-x-auto border border-border">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-muted/50 text-muted-foreground">
-              <tr>
-                {['Project Name', 'Folder Path', 'Open Terminal', 'Run Dev'].map((heading) => (
-                  <th key={heading} className="px-2 py-1.5 font-medium whitespace-nowrap">
+        <div className="min-w-0 border border-border">
+          <Table className="w-full text-left text-xs [&_tr>:nth-child(n+6)]:sticky [&_tr>:nth-child(n+6)]:z-10 [&_tr>:nth-child(n+6)]:bg-background [&_tr>:nth-child(n+6)]:w-24 [&_tr>:nth-child(n+6)]:min-w-24 [&_tr>:nth-child(n+6)]:max-w-24 [&_tr>:nth-last-child(3)]:right-48 [&_tr>:nth-last-child(3)]:border-l [&_tr>:nth-last-child(2)]:right-24 [&_tr>:nth-child(8)]:right-0">
+            <TableHeader className="bg-muted/50 text-muted-foreground">
+              <TableRow>
+                {[
+                  'Project Name',
+                  'Folder Path',
+                  'Size (MB)',
+                  'Scaffold Created',
+                  'Folder Created',
+                  'Open Terminal',
+                  'Run Dev',
+                  'Delete',
+                ].map((heading) => (
+                  <TableHead key={heading} className="px-2 py-1.5 font-medium whitespace-nowrap">
                     {heading}
-                  </th>
+                  </TableHead>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {projects.data?.map((project) => {
-                const execution = executions.data?.find((entry) => entry.id === project.id)
-                const running = execution && ['opening', 'installing', 'starting', 'running'].includes(execution.state)
-                return (
-                  <tr key={project.id} className="border-t border-border">
-                    <td className="px-2 py-1.5 font-medium">
-                      {project.name}
-                      {execution && (
-                        <div
-                          role="status"
-                          className={`mt-0.5 text-[11px] font-normal ${execution.state === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
-                        >
-                          {execution.message}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {projects.data
+                ?.filter((project) => !deletedIds.includes(project.id))
+                .map((project) => {
+                  const execution = executions.data?.find((entry) => entry.id === project.id)
+                  const running =
+                    execution && ['opening', 'installing', 'starting', 'running'].includes(execution.state)
+                  return (
+                    <TableRow key={project.id} className="border-t border-border">
+                      <TableCell className="px-2 py-1.5 font-medium whitespace-nowrap">
+                        {project.name}
+                        {operation === project.id && (
+                          <div role="status" className="mt-0.5 text-muted-foreground">
+                            Moving to trash…
+                          </div>
+                        )}
+                        {operation !== project.id && execution && (
+                          <div
+                            role="status"
+                            className={`mt-0.5 text-[11px] font-normal ${execution.state === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
+                          >
+                            {execution.message}
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="max-w-64 px-2 py-1.5 text-muted-foreground">
+                        <div className="truncate" title={project.path}>
+                          {project.path}
                         </div>
-                      )}
-                    </td>
-                    <td className="max-w-64 px-2 py-1.5 text-muted-foreground">
-                      <div className="truncate" title={project.path}>
-                        {project.path}
-                      </div>
-                    </td>
-                    <td className="px-2 py-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        disabled={busy}
-                        title="Open terminal"
-                        aria-label={`Open terminal for ${project.name}`}
-                        onClick={() =>
-                          void perform(async () => {
-                            await conveyor.projects.openTerminal({ id: project.id, runDev: false })
-                            setMessage('Terminal opened.')
-                          })
-                        }
-                      >
-                        <Terminal />
-                      </Button>
-                    </td>
-                    <td className="px-2 py-1">
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        disabled={busy || !!running}
-                        title="Run dev"
-                        aria-label={`Run dev for ${project.name}`}
-                        onClick={() =>
-                          void perform(async () => {
-                            await conveyor.projects.openTerminal({ id: project.id, runDev: true })
-                            await executions.refetch()
-                          })
-                        }
-                      >
-                        <Play />
-                      </Button>
-                    </td>
-                  </tr>
-                )
-              })}
-              {!projects.data?.length && !projects.isError && (
-                <tr>
-                  <td colSpan={4} className="px-2 py-3 text-center text-muted-foreground">
+                      </TableCell>
+                      <TableCell className="px-2 py-1.5 text-right tabular-nums text-muted-foreground">
+                        {project.sizeBytes == null
+                          ? '—'
+                          : (project.sizeBytes / 1_000_000).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                      </TableCell>
+                      <TableCell className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">
+                        {project.createdAt ? new Date(project.createdAt).toLocaleString() : '—'}
+                      </TableCell>
+                      <TableCell className="px-2 py-1.5 whitespace-nowrap text-muted-foreground">
+                        {project.folderCreatedAt ? new Date(project.folderCreatedAt).toLocaleString() : '—'}
+                      </TableCell>
+                      <TableCell className="px-2 py-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          disabled={busy}
+                          title="Open terminal"
+                          aria-label={`Open terminal for ${project.name}`}
+                          onClick={() =>
+                            void perform(async () => {
+                              await conveyor.projects.openTerminal({ id: project.id, runDev: false })
+                              setMessage('Terminal opened.')
+                            })
+                          }
+                        >
+                          <Terminal />
+                        </Button>
+                      </TableCell>
+                      <TableCell className="px-2 py-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          disabled={busy || !!running}
+                          title="Run dev"
+                          aria-label={`Run dev for ${project.name}`}
+                          onClick={() =>
+                            void perform(async () => {
+                              await conveyor.projects.openTerminal({ id: project.id, runDev: true })
+                              await executions.refetch()
+                            })
+                          }
+                        >
+                          <Play />
+                        </Button>
+                      </TableCell>
+                      <TableCell className="px-2 py-1">
+                        <Button
+                          variant="ghost"
+                          size="icon-xs"
+                          className="text-destructive"
+                          disabled={busy}
+                          title="Move project to trash"
+                          aria-label={`Delete ${project.name}`}
+                          onClick={() =>
+                            void perform(async () => {
+                              await conveyor.projects.delete({ id: project.id })
+                              setDeletedIds((ids) => [...ids, project.id])
+                              void projects.refetch()
+                              void executions.refetch()
+                              setMessage(`Moved ${project.name} to trash.`)
+                            }, project.id)
+                          }
+                        >
+                          {operation === project.id ? <LoaderCircle className="animate-spin" /> : <Trash2 />}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              {!projects.data?.some((project) => !deletedIds.includes(project.id)) && !projects.isError && (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-2 py-3 text-center text-muted-foreground">
                     {projects.isPending ? 'Loading…' : 'No local projects.'}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </section>
     </div>

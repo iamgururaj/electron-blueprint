@@ -20,6 +20,7 @@ export default defineConfig({
       minify: true,
       license: { fileName: 'THIRD-PARTY-LICENSES.md' },
       rollupOptions: {
+        external: ['original-fs'],
         input: {
           main: resolve(__dirname, 'lib/main/main.ts'),
         },

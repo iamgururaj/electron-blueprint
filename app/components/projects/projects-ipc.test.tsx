@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { resolve } from 'node:path'
 import type { BrowserWindow, IpcMainInvokeEvent, WebContents } from 'electron'
 import { createCaller, type Router } from 'electron-conveyor/define'
 import type { AppContext } from '@/conveyor/init'
@@ -8,19 +9,30 @@ const mocks = vi.hoisted(() => ({
   writeFile: vi.fn(),
   rename: vi.fn(),
   stat: vi.fn(),
+  lstat: vi.fn(),
+  trashItem: vi.fn(),
+  opendir: vi.fn(),
   realpath: vi.fn(),
   picker: vi.fn(),
   execFile: vi.fn(),
   spawn: vi.fn(),
   terminal: vi.fn(),
 }))
-vi.mock('electron', () => ({ app: { getPath: () => '/userdata' }, dialog: { showOpenDialog: mocks.picker } }))
-vi.mock('node:fs/promises', () => ({
-  readFile: mocks.readFile,
-  writeFile: mocks.writeFile,
-  rename: mocks.rename,
-  stat: mocks.stat,
-  realpath: mocks.realpath,
+vi.mock('electron', () => ({
+  app: { getPath: () => '/userdata', getAppPath: () => process.cwd() },
+  dialog: { showOpenDialog: mocks.picker },
+  shell: { trashItem: mocks.trashItem },
+}))
+vi.mock('original-fs', () => ({
+  promises: {
+    readFile: mocks.readFile,
+    writeFile: mocks.writeFile,
+    rename: mocks.rename,
+    stat: mocks.stat,
+    lstat: mocks.lstat,
+    opendir: mocks.opendir,
+    realpath: mocks.realpath,
+  },
 }))
 vi.mock('node:child_process', () => ({ execFile: mocks.execFile, spawn: mocks.spawn }))
 vi.mock('@/lib/main/project-terminal', () => ({ openProjectTerminal: mocks.terminal, executionStates: async () => [] }))
@@ -52,6 +64,107 @@ beforeEach(() => {
 })
 
 describe('Project IPC boundary', () => {
+  it('explains a Windows trash abort and keeps the registry entry', async () => {
+    const project = {
+      id: '123e4567-e89b-42d3-a456-426614174000',
+      name: 'abort-fixture',
+      path: resolve('abort-fixture'),
+    }
+    mocks.readFile.mockResolvedValue(JSON.stringify([project]))
+    mocks.lstat.mockResolvedValue({ isSymbolicLink: () => false })
+    mocks.trashItem.mockRejectedValue(new Error('Operation was aborted'))
+    await expect(caller().delete({ id: project.id })).rejects.toThrow('Restart the scaffolder')
+    expect(mocks.writeFile).not.toHaveBeenCalled()
+  })
+  it('counts an ASAR as one physical file without opening it as a directory', async () => {
+    const path = resolve('archive-fixture')
+    const project = { id: '123e4567-e89b-42d3-a456-426614174000', name: 'archive-fixture', path }
+    mocks.readFile.mockResolvedValue(JSON.stringify([project]))
+    mocks.lstat.mockImplementation(async (target) => ({
+      isDirectory: () => target === path,
+      isFile: () => target !== path,
+      isSymbolicLink: () => false,
+      size: 110835,
+      birthtimeMs: 0,
+    }))
+    mocks.opendir.mockImplementation(async () =>
+      (async function* () {
+        yield { name: 'default_app.asar' }
+      })()
+    )
+    expect(await caller().list()).toEqual([{ ...project, folderCreatedAt: null, sizeBytes: 110835 }])
+    expect(mocks.opendir).toHaveBeenCalledTimes(1)
+    expect(mocks.opendir).toHaveBeenCalledWith(path)
+  })
+  it('measures nested files, skips links, and reads folder creation independently of scaffold creation', async () => {
+    const path = resolve('metadata-fixture')
+    const folderDate = new Date('2026-01-02T03:04:05Z')
+    const project = { id: '123e4567-e89b-42d3-a456-426614174000', name: 'metadata-fixture', path }
+    mocks.readFile.mockResolvedValue(JSON.stringify([project]))
+    mocks.lstat.mockImplementation(async (target) => ({
+      isDirectory: () => target === path || target === resolve(path, 'nested'),
+      isSymbolicLink: () => target === resolve(path, 'link'),
+      isFile: () => target === resolve(path, 'file') || target === resolve(path, 'nested', 'file'),
+      size: 750_000,
+      birthtime: folderDate,
+      birthtimeMs: folderDate.getTime(),
+    }))
+    mocks.opendir.mockImplementation(async (target) =>
+      (async function* () {
+        for (const name of target === path ? ['file', 'nested', 'link'] : ['file']) yield { name }
+      })()
+    )
+    expect(await caller().list()).toEqual([
+      { ...project, folderCreatedAt: folderDate.toISOString(), sizeBytes: 1_500_000 },
+    ])
+    mocks.lstat.mockRejectedValue(new Error('Missing folder'))
+    expect(await caller().list()).toEqual([{ ...project, folderCreatedAt: null, sizeBytes: null }])
+  })
+  it('retries a busy Electron folder before removing its registry entry', async () => {
+    const project = {
+      id: '123e4567-e89b-42d3-a456-426614174000',
+      name: 'locked-fixture',
+      path: resolve('locked-fixture'),
+    }
+    mocks.readFile.mockResolvedValue(JSON.stringify([project]))
+    mocks.lstat.mockResolvedValue({ isSymbolicLink: () => false })
+    mocks.trashItem.mockRejectedValueOnce(Object.assign(new Error('busy'), { code: 'EBUSY' }))
+    await caller().delete({ id: project.id })
+    expect(mocks.trashItem).toHaveBeenCalledTimes(2)
+    expect(mocks.trashItem).toHaveBeenLastCalledWith(project.path)
+    expect(mocks.rename).toHaveBeenCalled()
+  })
+  it('retains the registry entry and explains a persistent lock', async () => {
+    const project = {
+      id: '123e4567-e89b-42d3-a456-426614174000',
+      name: 'locked-fixture',
+      path: resolve('locked-fixture'),
+    }
+    mocks.readFile.mockResolvedValue(JSON.stringify([project]))
+    mocks.lstat.mockResolvedValue({ isSymbolicLink: () => false })
+    mocks.trashItem.mockRejectedValue(Object.assign(new Error('busy'), { code: 'EBUSY' }))
+    await expect(caller().delete({ id: project.id })).rejects.toThrow('Close its terminal')
+    expect(mocks.writeFile).not.toHaveBeenCalled()
+  })
+  it('trashes a registered folder and keeps its entry when trash fails', async () => {
+    const project = {
+      id: '123e4567-e89b-42d3-a456-426614174000',
+      name: 'delete-fixture',
+      path: resolve('delete-fixture'),
+    }
+    mocks.readFile.mockResolvedValue(JSON.stringify([project]))
+    mocks.lstat.mockResolvedValue({ isSymbolicLink: () => false })
+    mocks.trashItem.mockRejectedValueOnce(new Error('Folder locked'))
+    await expect(caller().delete({ id: project.id })).rejects.toThrow('Folder locked')
+    expect(mocks.writeFile).not.toHaveBeenCalled()
+    await caller().delete({ id: project.id })
+    expect(mocks.trashItem).toHaveBeenLastCalledWith(project.path)
+    expect(mocks.writeFile).toHaveBeenCalledWith(expect.stringContaining('projects.json.tmp'), '[]', 'utf8')
+    mocks.readFile.mockResolvedValue('[]')
+    mocks.trashItem.mockClear()
+    await expect(caller().delete({ id: project.id })).rejects.toThrow('Unknown local project')
+    expect(mocks.trashItem).not.toHaveBeenCalled()
+  })
   it('requires a native folder selection and handles picker cancellation', async () => {
     await expect(caller().clone({ name: 'unselected', runDev: false })).rejects.toThrow('Choose a destination')
     mocks.picker.mockResolvedValueOnce({ canceled: true, filePaths: [] })
