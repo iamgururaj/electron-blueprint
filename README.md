@@ -216,6 +216,13 @@ tooltip providers use `delay`, and switch callbacks use `onCheckedChange`.
 Tabs activate on focus to preserve the application's existing keyboard behavior.
 Run `npm test`, `npm run typecheck`, and `npm run vite:build:app` to validate changes.
 
+Production packages include only `out/`, app icons, package metadata, and licenses.
+Vite bundles and tree-shakes renderer, main, and preload dependencies; Electron and Node
+built-ins stay external. Generated third-party license notices accompany each bundle.
+The packager excludes `node_modules` and retains only English (`en-US`, `en-GB`) locales.
+If adding a native addon or another dependency that cannot be bundled, explicitly externalize
+it and update the packaging file list to include its required runtime files.
+
 ```ts
 import { Button } from '@/app/components/ui/button'
 import { conveyor } from '@/conveyor/client'

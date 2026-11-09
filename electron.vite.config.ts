@@ -1,7 +1,7 @@
 import { resolve } from 'path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { defineConfig } from 'electron-vite'
 
 // Shared alias configuration
 const aliases = {
@@ -14,6 +14,11 @@ const aliases = {
 export default defineConfig({
   main: {
     build: {
+      // Ship the used runtime code in the bundle instead of entire npm packages.
+      // Electron and Node built-ins remain external automatically.
+      externalizeDeps: false,
+      minify: true,
+      license: { fileName: 'THIRD-PARTY-LICENSES.md' },
       rollupOptions: {
         input: {
           main: resolve(__dirname, 'lib/main/main.ts'),
@@ -23,10 +28,13 @@ export default defineConfig({
     resolve: {
       alias: aliases,
     },
-    plugins: [externalizeDepsPlugin()],
   },
   preload: {
     build: {
+      // Sandboxed preloads can require Electron, but cannot load npm packages.
+      externalizeDeps: false,
+      minify: true,
+      license: { fileName: 'THIRD-PARTY-LICENSES.md' },
       rollupOptions: {
         input: {
           preload: resolve(__dirname, 'lib/preload/preload.ts'),
@@ -36,13 +44,11 @@ export default defineConfig({
     resolve: {
       alias: aliases,
     },
-    // Bundle electron-conveyor into the preload: a sandboxed preload's `require` can only load
-    // `electron`, so externalized packages would fail to resolve at runtime.
-    plugins: [externalizeDepsPlugin({ exclude: ['electron-conveyor'] })],
   },
   renderer: {
     root: './app',
     build: {
+      license: { fileName: 'THIRD-PARTY-LICENSES.md' },
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'app/index.html'),
