@@ -99,6 +99,10 @@ export default [
   },
   // Add specific configuration for preload files
   {
+    files: ['resources/project-runner.mjs'],
+    languageOptions: { parserOptions: { projectService: false } },
+  },
+  {
     files: ['app/**/*.ts', 'lib/**/*.ts', 'app/**/*.tsx', 'lib/**/*.tsx'],
     languageOptions: {
       globals: {

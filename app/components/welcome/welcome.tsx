@@ -4,6 +4,7 @@ import { Hero } from './hero'
 import { Panel } from './panel'
 import { DemoPanel } from './demo-panel'
 import { STACK } from './stack'
+import { ProjectScaffolder } from '../projects/project-scaffolder'
 
 /**
  * The welcome screen — a short tour of what this starter kit is built on.
@@ -12,7 +13,7 @@ import { STACK } from './stack'
  * `<Welcome />` line in `app.tsx` leaves the bare shell behind, with nothing to clean up after.
  */
 export function Welcome() {
-  const [active, setActive] = useState(STACK[0].id)
+  const [active, setActive] = useState('scaffolder')
   // The demo pitch is not a stack entry, so it is the one id that resolves to nothing here.
   const entry = STACK.find((e) => e.id === active)
 
@@ -20,7 +21,15 @@ export function Welcome() {
     <div className="flex h-full min-h-0">
       <Sidebar active={active} onSelect={setActive} />
       <div className="min-w-0 flex-1 overflow-auto">
-        {!entry ? <DemoPanel /> : entry.hero ? <Hero entry={entry} onSelect={setActive} /> : <Panel entry={entry} />}
+        {active === 'scaffolder' ? (
+          <ProjectScaffolder />
+        ) : !entry ? (
+          <DemoPanel />
+        ) : entry.hero ? (
+          <Hero entry={entry} onSelect={setActive} />
+        ) : (
+          <Panel entry={entry} />
+        )}
       </div>
     </div>
   )

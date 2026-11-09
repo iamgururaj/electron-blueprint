@@ -3,6 +3,7 @@ import { createRouter, devLogger } from 'electron-conveyor/main'
 import { windows, openAppWindow } from '@/lib/main/app'
 import { windowModule, setupWindowEvents } from './modules/window'
 import { webModule } from './modules/web'
+import { projectsModule } from './modules/projects'
 
 /**
  * The app's whole IPC surface — modules, stores, context, global middleware — registered in one
@@ -17,6 +18,7 @@ export const router = createRouter(
   {
     window: windowModule,
     web: webModule,
+    projects: projectsModule,
   },
   {
     createContext: () => ({ appStartedAt: APP_STARTED_AT, windows, openWindow: openAppWindow }),

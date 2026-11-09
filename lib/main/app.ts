@@ -60,6 +60,12 @@ export function createAppWindow(hash?: string): BrowserWindow {
     return { action: 'deny' }
   })
 
+  // Keep untrusted documents out of the window that owns the preload bridge.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url !== mainWindow.webContents.getURL()) event.preventDefault()
+  })
+  mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault())
+
   // HMR for renderer base on electron-vite cli.
   // Load the remote URL for development or the local html file for production.
   if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL']) {
