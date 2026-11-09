@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils'
 import { useWindowStore } from './window-store'
 import { useThemeStore } from './theme-store'
 import { TitlebarMenu } from './titlebar-menu'
+import appIcon from '@/resources/build/icon.svg'
 
 /**
  * Custom window titlebar: core shell chrome, styled with Tailwind on the theme tokens (no legacy
@@ -37,9 +38,7 @@ export function Titlebar({ title = 'Electron Blueprint' }: { title?: string }) {
       )}
     >
       <div className="flex items-center gap-2.5 pl-3 [-webkit-app-region:no-drag]">
-        {/* The native traffic lights already anchor the left edge on macOS, where a same-sized dot
-            beside them just reads as a fourth window control. */}
-        {!isMac && <span className="size-3.25 rounded-lg bg-brand ring-[3px] ring-brand/20" />}
+        {!isMac && <img src={appIcon} alt="" draggable={false} className="size-5" />}
         {menuVisible && <TitlebarMenu />}
       </div>
 

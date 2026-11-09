@@ -5,4 +5,5 @@
 - Check: `npm run typecheck && npm run lint:check`
 - Build: `npm run vite:build:app`; package Windows: `npm run build:win`; Mac: `npm run build:mac`
 - Keep changes focused; follow existing patterns. Run relevant checks before finishing.
+- Keep checks proportional; avoid full suites for small/medium changes, and run builds only when requested or after suggesting one and receiving explicit chat confirmation.
 - Dependencies: Always use latest stable (`@latest`); update lockfile and verify compatibility.
